@@ -2,6 +2,8 @@
 
 This repository contains a refactored implementation of a transformer-based model for continuous sign language translation using I3D and MediaPipe features from the How2Sign dataset.
 
+![alt text](https://github.com/NahinAlam001/CSLR/blob/main/CSLR.drawio.png?raw=true)
+
 ## Setup
 1. Create virtual environment: `python -m venv venv; source venv/bin/activate`
 2. Install dependencies: `pip install -r requirements.txt`
