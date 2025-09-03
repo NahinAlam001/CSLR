@@ -1,9 +1,11 @@
 import os
 import yaml
+import argparse
 import logging
 import random
 import numpy as np
 import torch
+from tokenizers import Tokenizer
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
@@ -28,8 +30,18 @@ def set_seeds(seed: int = 42):
 
 def main():
     set_seeds()
+    
+    parser = argparse.ArgumentParser(description="Train the Sign Language Transformer")
+    parser.add_argument('--feature_dir', type=str, required=True, help='Path to the downloaded features directory.')
+    parser.add_argument('--tsv_dir', type=str, required=True, help='Path to the directory containing TSV files.')
+    args = parser.parse_args()
+
     with open('config.yaml', 'r') as f:
         config = yaml.safe_load(f)
+    
+    # Overwrite config paths with provided arguments
+    config['feature_dir'] = args.feature_dir
+    config['tsv_dir'] = args.tsv_dir
 
     os.makedirs('processed_data', exist_ok=True)
     tokenizer_path = config['tokenizer_path']
@@ -81,7 +93,7 @@ def main():
             writer.add_scalar('Train/Loss', loss.item(), epoch * len(train_loader) + len(train_loader))
 
         train_loss = epoch_loss / len(train_loader)
-        val_loss, val_bleu, val_rouge, val_wer = evaluate_model(model, val_loader, criterion, tokenizer, device)
+        val_loss, val_bleu, val_rouge, val_wer = evaluate_model(model, val_loader, criterion, tokenizer, device, config)
         writer.add_scalar('Val/Loss', val_loss, epoch)
         writer.add_scalar('Val/BLEU', val_bleu, epoch)
         writer.add_scalar('Val/ROUGE', val_rouge, epoch)
