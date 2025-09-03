@@ -1,0 +1,11 @@
+torch
+numpy
+pandas
+tqdm
+kagglehub
+sacrebleu
+evaluate
+rouge_score
+tokenizers
+pyyaml
+tensorboard
