@@ -9,3 +9,4 @@ rouge_score
 tokenizers
 pyyaml
 tensorboard
+jiwer
