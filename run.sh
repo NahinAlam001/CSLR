@@ -2,7 +2,7 @@
 set -e # Exit immediately if a command exits with a non-zero status.
 
 echo ">>> Installing dependencies..."
-pip install -r requirements.txt
+pip install -r requirements.txt -Uqq
 
 echo ">>> Downloading dataset from KaggleHub..."
 # Run a Python script to get the download path and print it to stdout
