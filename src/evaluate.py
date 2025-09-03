@@ -16,13 +16,13 @@ from src.models import TransformerEncoder, TransformerDecoder, Seq2Seq
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def evaluate_model(model: torch.nn.Module, iterator: torch.utils.data.DataLoader, 
+def evaluate_model(model: torch.nn.Module, iterator: torch.utils.data.DataLoader,
                    criterion: torch.nn.Module, tokenizer: Tokenizer, device: torch.device, config: dict):
     model.eval()
     epoch_loss = 0
     bleu_metric = evaluate.load("sacrebleu")
     rouge_metric = evaluate.load("rouge")
-    
+
     predictions = []
     references = []
 
@@ -31,7 +31,7 @@ def evaluate_model(model: torch.nn.Module, iterator: torch.utils.data.DataLoader
             src, trg = batch
             if src.nelement() == 0: continue
             src, trg = src.to(device), trg.to(device)
-            
+
             output = model(src, trg)
             output_dim = output.shape[-1]
             flat_output = output.reshape(-1, output_dim)
@@ -39,10 +39,15 @@ def evaluate_model(model: torch.nn.Module, iterator: torch.utils.data.DataLoader
             loss = criterion(flat_output, flat_trg)
             epoch_loss += loss.item()
 
-            predicted_indices = model.generate(src, max_len=config['max_seq_len'])
-            decoded_preds = tokenizer.decode_batch(predicted_indices.cpu().numpy())
-            decoded_refs = tokenizer.decode_batch(trg.cpu().numpy())
-            
+            # Handle model trained with DataParallel
+            if isinstance(model, nn.DataParallel):
+                predicted_indices = model.module.generate(src, max_len=config['max_seq_len'])
+            else:
+                predicted_indices = model.generate(src, max_len=config['max_seq_len'])
+
+            decoded_preds = tokenizer.decode_batch(predicted_indices.cpu().numpy().tolist())
+            decoded_refs = tokenizer.decode_batch(trg.cpu().numpy().tolist())
+
             cleaned_preds = [p.replace("[PAD]", "").replace("[SOS]", "").replace("[EOS]", "").strip() for p in decoded_preds]
             cleaned_refs_flat = [r.replace("[PAD]", "").replace("[SOS]", "").replace("[EOS]", "").strip() for r in decoded_refs]
 
@@ -51,11 +56,11 @@ def evaluate_model(model: torch.nn.Module, iterator: torch.utils.data.DataLoader
 
     predictions_safe = [pred if pred else " " for pred in predictions]
     references_safe = [ref if ref else " " for ref in references]
-    
+
     bleu_score = bleu_metric.compute(predictions=predictions_safe, references=[[r] for r in references_safe])['score']
     rouge_score = rouge_metric.compute(predictions=predictions_safe, references=references_safe)['rougeL'] * 100
     wer_score = jiwer.wer(references_safe, predictions_safe) * 100
-    
+
     return epoch_loss / len(iterator), bleu_score, rouge_score, wer_score
 
 def main():
@@ -79,11 +84,22 @@ def main():
     enc = TransformerEncoder(config['input_dim'], config['hid_dim'], config['n_layers'], config['n_heads'], config['pf_dim'], config['dropout'])
     dec = TransformerDecoder(config['output_dim'], config['hid_dim'], config['n_layers'], config['n_heads'], config['pf_dim'], config['dropout'])
     model = Seq2Seq(enc, dec, device, tokenizer.token_to_id("[SOS]"), tokenizer.token_to_id("[EOS]"), tokenizer.token_to_id("[PAD]")).to(device)
-    model.load_state_dict(torch.load(config['model_save_path'], map_location=device))
+
+    # Load the trained model weights
+    state_dict = torch.load(config['model_save_path'], map_location=device)
+    # create new OrderedDict that does not contain `module.`
+    from collections import OrderedDict
+    new_state_dict = OrderedDict()
+    for k, v in state_dict.items():
+        name = k[7:] if k.startswith('module.') else k # remove `module.`
+        new_state_dict[name] = v
+    # load params
+    model.load_state_dict(new_state_dict)
+
 
     criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.token_to_id("[PAD]"))
     test_loss, test_bleu, test_rouge, test_wer = evaluate_model(model, test_loader, criterion, tokenizer, device, config)
-    
+
     logging.info("--- Evaluation Complete ---")
     logging.info(f"Test Loss: {test_loss:.3f}")
     logging.info(f"Test BLEU Score: {test_bleu:.2f}")
